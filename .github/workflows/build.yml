@@ -1,0 +1,27 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Build
+        run: dotnet build src/TabbedRdp/TabbedRdp.csproj -c Release -o publish
+
+      - name: Upload TabbedRDP.exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: TabbedRDP
+          path: |
+            publish/TabbedRDP.exe
+            publish/TabbedRDP.exe.config
