@@ -23,6 +23,8 @@ namespace TabbedRdp
         [DataMember] public bool StandardTitleBar { get; set; }
         /// <summary>Tapping Alt shows the menu even while a remote session has the keyboard.</summary>
         [DataMember] public bool AltMenuInSessions { get; set; } = true;
+        /// <summary>Keep the menu bar docked between the tabs and the session instead of showing it on Alt.</summary>
+        [DataMember] public bool PinMenuBar { get; set; }
         /// <summary>Settings every new connection starts from (Options → Save as default).</summary>
         [DataMember] public ConnectionInfo Defaults { get; set; } = new ConnectionInfo();
         [DataMember] public int WindowX { get; set; }

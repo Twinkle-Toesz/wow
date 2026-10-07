@@ -29,6 +29,8 @@ namespace TabbedRdp
         private AltKeyWatcher _altWatcher;
         private AltMessageFilter _altFilter;
         private int _menuClosedAt;
+        private int _menuLastActive;
+        private readonly Timer _menuWatch = new Timer { Interval = 200 };
         private bool _exiting;
         private Timer _exitTimeout;
 
@@ -54,6 +56,7 @@ namespace TabbedRdp
             Controls.Add(_strip);
             Controls.Add(_menu);
             _split.Panel1Collapsed = !_state.ShowSidebar;
+            ApplyMenuBarMode();
 
             Theme.Changed += OnThemeChanged;
             ApplyTheme();
@@ -498,7 +501,7 @@ namespace TabbedRdp
 
         // ---- Alt menu --------------------------------------------------------------------
 
-        private ToolStripMenuItem _sidebarItem, _smartSizingItem, _titleBarItem, _altItem;
+        private ToolStripMenuItem _sidebarItem, _smartSizingItem, _titleBarItem, _altItem, _pinMenuItem;
         private ToolStripMenuItem _themeSystem, _themeDark, _themeLight;
 
         private static ToolStripMenuItem Item(string text, string shortcut, Action action)
@@ -567,6 +570,12 @@ namespace TabbedRdp
                 SaveState();
                 MessageBox.Show(this, "The title bar style changes the next time Tabbed RDP starts.", "Tabbed RDP", MessageBoxButtons.OK, MessageBoxIcon.Information);
             });
+            _pinMenuItem = Item("Always show the menu bar", null, () =>
+            {
+                _state.PinMenuBar = !_state.PinMenuBar;
+                SaveState();
+                ApplyMenuBarMode();
+            });
             _altItem = Item("Alt opens this menu inside sessions", null, () =>
             {
                 _state.AltMenuInSessions = !_state.AltMenuInSessions;
@@ -575,7 +584,7 @@ namespace TabbedRdp
             });
             view.DropDownItems.AddRange(new ToolStripItem[]
             {
-                _sidebarItem, theme, new ToolStripSeparator(), _smartSizingItem, new ToolStripSeparator(), _titleBarItem, _altItem,
+                _sidebarItem, theme, new ToolStripSeparator(), _smartSizingItem, new ToolStripSeparator(), _pinMenuItem, _titleBarItem, _altItem,
             });
             view.DropDownOpening += (s, e) =>
             {
@@ -587,6 +596,7 @@ namespace TabbedRdp
                 _smartSizingItem.Checked = CurrentSession?.SmartSizing == true;
                 _titleBarItem.Checked = _state.StandardTitleBar;
                 _altItem.Checked = _state.AltMenuInSessions;
+                _pinMenuItem.Checked = _state.PinMenuBar;
             };
 
             // --- Options ---
@@ -613,9 +623,10 @@ namespace TabbedRdp
             });
 
             _menu.Items.AddRange(new ToolStripItem[] { connection, view, options, help });
+            // Hide the (unpinned) bar only once the menu is really finished with: a dropdown closing
+            // while the mouse moves to the next top-level item must not hide it.
             _menu.MenuDeactivate += (s, e) => BeginInvoke((Action)HideMenuIfIdle);
-            foreach (ToolStripMenuItem top in _menu.Items)
-                top.DropDownClosed += (s, e) => BeginInvoke((Action)HideMenuIfIdle);
+            _menuWatch.Tick += (s, e) => HideMenuIfIdle();
         }
 
         private void FillSavedMenu(ToolStripMenuItem parent)
@@ -664,31 +675,92 @@ namespace TabbedRdp
             }
         }
 
+        private bool AnyMenuOpen => _menu.Items.Cast<ToolStripMenuItem>().Any(i => i.DropDown.Visible);
+
+        private bool MouseOverMenuBar => _menu.Visible && _menu.RectangleToScreen(_menu.ClientRectangle).Contains(Cursor.Position);
+
+        /// <summary>Pinned: the bar is docked under the tabs. Otherwise it floats over the session while open.</summary>
+        private void ApplyMenuBarMode()
+        {
+            foreach (ToolStripMenuItem item in _menu.Items) item.HideDropDown();
+            _menuWatch.Stop();
+            if (_state.PinMenuBar)
+            {
+                _menu.Dock = DockStyle.Top;
+                _menu.Height = _menu.GetPreferredSize(Size.Empty).Height;
+                _menu.Visible = true;
+                // Docking goes from the highest child index down: tabs first, then the menu, then the content.
+                Controls.SetChildIndex(_split, 0);
+                Controls.SetChildIndex(_menu, 1);
+                Controls.SetChildIndex(_strip, 2);
+            }
+            else
+            {
+                _menu.Dock = DockStyle.None;
+                _menu.Visible = false;
+            }
+            PerformLayout();
+        }
+
         private void ToggleMenu()
         {
-            if (_menu.Visible) { HideMenu(); return; }
+            if (WindowState == FormWindowState.Minimized) return;
+
+            if (_state.PinMenuBar)
+            {
+                if (AnyMenuOpen) CloseMenu();
+                else OpenFirstMenu();
+                return;
+            }
+
+            if (_menu.Visible) { CloseMenu(); return; }
             // The same Alt press that closed the menu must not reopen it.
             if (unchecked(Environment.TickCount - _menuClosedAt) < 350) return;
-            if (WindowState == FormWindowState.Minimized) return;
 
             _menu.Bounds = new Rectangle(0, _strip.Bottom, ClientSize.Width, _menu.GetPreferredSize(Size.Empty).Height);
             _menu.Visible = true;
             _menu.BringToFront();
-            ((ToolStripMenuItem)_menu.Items[0]).ShowDropDown();
-            ((ToolStripMenuItem)_menu.Items[0]).DropDown.Focus();
+            _menuLastActive = Environment.TickCount;
+            _menuWatch.Start();
+            OpenFirstMenu();
+        }
+
+        private void OpenFirstMenu()
+        {
+            // A real click puts the menu bar into "auto-expand" mode, where hovering another top-level
+            // item opens its dropdown. Opening from code doesn't, so switch it on explicitly.
+            try
+            {
+                _menu.GetType().GetProperty("MenuAutoExpand", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public)
+                    ?.SetValue(_menu, true);
+            }
+            catch { /* hover-switching is a nicety */ }
+
+            var first = (ToolStripMenuItem)_menu.Items[0];
+            first.Select();
+            first.ShowDropDown();
+            first.DropDown.Focus();
+            if (first.DropDown.Items.Count > 0) first.DropDown.Items[0].Select();
         }
 
         private void HideMenuIfIdle()
         {
-            if (!_menu.Visible) return;
-            if (_menu.Items.Cast<ToolStripMenuItem>().Any(i => i.DropDown.Visible)) return;
-            HideMenu();
+            if (_state.PinMenuBar || !_menu.Visible) return;
+            // Stay while a dropdown is open or the mouse is on the bar (moving between Connection / View / …).
+            if (AnyMenuOpen || MouseOverMenuBar)
+            {
+                _menuLastActive = Environment.TickCount;
+                return;
+            }
+            if (unchecked(Environment.TickCount - _menuLastActive) < 500) return;
+            CloseMenu();
         }
 
-        private void HideMenu()
+        private void CloseMenu()
         {
             foreach (ToolStripMenuItem item in _menu.Items) item.HideDropDown();
-            _menu.Visible = false;
+            _menuWatch.Stop();
+            if (!_state.PinMenuBar) _menu.Visible = false;
             _menuClosedAt = Environment.TickCount;
             // Don't steal the keyboard from a dialog the menu just opened.
             if (ActiveForm == this) CurrentSession?.FocusRemote();
@@ -919,7 +991,7 @@ namespace TabbedRdp
             _strip.WindowMaximized = maximized;
             _strip.TopResizeBorder = _customChrome && !maximized ? TopResizeBorder : 0;
             _strip.Invalidate();
-            if (_menu.Visible) _menu.Width = ClientSize.Width;
+            if (_menu.Visible && !_state.PinMenuBar) _menu.Width = ClientSize.Width;
         }
 
         // ---- state -----------------------------------------------------------------------
@@ -1002,6 +1074,7 @@ namespace TabbedRdp
         protected override void OnFormClosed(FormClosedEventArgs e)
         {
             _altWatcher?.Dispose();
+            _menuWatch.Dispose();
             if (_altFilter != null) Application.RemoveMessageFilter(_altFilter);
             Theme.Changed -= OnThemeChanged;
             foreach (var session in Sessions.ToList())

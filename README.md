@@ -13,7 +13,8 @@ Single `.exe`, targets .NET Framework 4.8 (already on every Windows 10/11 / Serv
   (Prefer the normal Windows title bar? Alt → View → *Use the standard Windows title bar*.)
 - **Hidden menu — tap Alt** (also while a remote session has the keyboard): Connection (new, open .rdp, saved, recent,
   reconnect, disconnect, full screen, duplicate, close), View (sidebar, theme, smart sizing, title bar), Options, Help.
-  The app icon at the top-left opens the same menu.
+  The app icon at the top-left opens the same menu. Prefer a permanent menu bar? Alt → View → *Always show the menu bar*
+  docks it between the tabs and the remote desktop.
 - **Options** — every setting the RDP engine supports, in one dialog with pages:
   *Connection* (computer, user, password), *Display* (fit-to-window / fixed size presets / full screen, smart sizing,
   colour depth, connection bar), *Local resources* (audio playback, microphone, Windows key combinations, clipboard,
