@@ -529,6 +529,7 @@ namespace TabbedRdp
 
         private static string RdpEngineName()
         {
+            if (RdpClientHost.ClassName != "unknown") return RdpClientHost.ClassName;
             try { return File.Exists(Path.Combine(Environment.SystemDirectory, "mstscax.dll")) ? "mstscax.dll" : "mstscax.dll not found!"; }
             catch { return "?"; }
         }

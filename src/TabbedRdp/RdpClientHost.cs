@@ -143,15 +143,44 @@ namespace TabbedRdp
         {
             if (_clsid != null) return _clsid;
 
-            foreach (var (name, guid) in FindClassesInTypeLib().Concat(Fallbacks.Select(f => (f.Name, new Guid(f.Clsid)))))
+            var tried = new List<string>();
+            var candidates = FindClassesInTypeLib().Concat(Fallbacks.Select(f => (f.Name, new Guid(f.Clsid))));
+            foreach (var (name, guid) in candidates.GroupBy(c => c.Item2).Select(g => g.First()))
             {
-                if (IsRegistered(guid))
+                if (!IsRegistered(guid)) continue;
+                // A class can be listed and registered yet still refuse to instantiate
+                // (CLASS_E_CLASSNOTAVAILABLE), so prove it works before handing it to AxHost.
+                if (!CanCreate(guid, out string error))
                 {
-                    ClassName = name;
-                    return _clsid = guid.ToString();
+                    tried.Add($"{name}: {error}");
+                    continue;
                 }
+                ClassName = name;
+                return _clsid = guid.ToString();
             }
-            throw new InvalidOperationException("The Remote Desktop ActiveX control (mstscax.dll) is not registered on this machine.");
+            throw new InvalidOperationException(
+                "No usable Remote Desktop ActiveX control (mstscax.dll) was found on this machine." +
+                (tried.Count > 0 ? "\n\nTried:\n" + string.Join("\n", tried) : ""));
+        }
+
+        private static bool CanCreate(Guid clsid, out string error)
+        {
+            error = null;
+            object instance = null;
+            try
+            {
+                instance = Activator.CreateInstance(Type.GetTypeFromCLSID(clsid, true));
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+            finally
+            {
+                if (instance != null && Marshal.IsComObject(instance)) Marshal.ReleaseComObject(instance);
+            }
         }
 
         private static bool IsRegistered(Guid clsid)
@@ -165,12 +194,13 @@ namespace TabbedRdp
 
         private static IEnumerable<(string Name, Guid Clsid)> FindClassesInTypeLib()
         {
-            var found = new List<(int Version, string Name, Guid Clsid)>();
+            var found = new List<(int Rank, string Name, Guid Clsid)>();
             try
             {
                 string path = Path.Combine(Environment.SystemDirectory, "mstscax.dll");
                 LoadTypeLibEx(path, 2 /* REGKIND_NONE */, out ITypeLib typeLib);
-                var pattern = new Regex(@"^MsRdpClient(\d*)NotSafeForScripting$");
+                // MsRdpClient<N>NotSafeForScripting (preferred), MsRdpClient<N>, and the base MsTscAx classes.
+                var pattern = new Regex(@"^(?:MsRdpClient(\d*)|MsTscAx)(NotSafeForScripting)?$");
 
                 int count = typeLib.GetTypeInfoCount();
                 for (int i = 0; i < count; i++)
@@ -187,15 +217,17 @@ namespace TabbedRdp
                     try
                     {
                         var attr = Marshal.PtrToStructure<TYPEATTR>(attrPtr);
-                        int version = m.Groups[1].Value.Length == 0 ? 1 : int.Parse(m.Groups[1].Value);
-                        found.Add((version, name, attr.guid));
+                        int version = name.StartsWith("MsTscAx") ? 0
+                            : m.Groups[1].Value.Length == 0 ? 1 : int.Parse(m.Groups[1].Value);
+                        bool notSafe = m.Groups[2].Success;
+                        found.Add(((notSafe ? 1000 : 0) + version, name, attr.guid));
                     }
                     finally { info.ReleaseTypeAttr(attrPtr); }
                 }
             }
             catch { /* fall back to hard-coded CLSIDs */ }
 
-            return found.OrderByDescending(f => f.Version).Select(f => (f.Name, f.Clsid)).ToList();
+            return found.OrderByDescending(f => f.Rank).Select(f => (f.Name, f.Clsid)).ToList();
         }
     }
 }
