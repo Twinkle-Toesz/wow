@@ -10,7 +10,7 @@ namespace TabbedRdp
     public sealed class MainForm : Form
     {
         private readonly AppState _state;
-        private readonly string[] _startupArgs;
+        private readonly LaunchParser.Result _startup;
 
         private readonly ToolStripComboBox _address = new ToolStripComboBox { AutoSize = false, Width = 260, FlatStyle = FlatStyle.System };
         private readonly ToolStripButton _fullScreenButton = new ToolStripButton("Full screen") { ToolTipText = "Full screen (F11) — leave with the connection bar or Ctrl+Alt+Break" };
@@ -37,10 +37,10 @@ namespace TabbedRdp
         private bool _exiting;
         private Timer _exitTimeout;
 
-        public MainForm(string[] args)
+        public MainForm(LaunchParser.Result startup)
         {
             _state = AppState.Load();
-            _startupArgs = args ?? new string[0];
+            _startup = startup;
 
             Text = "Tabbed RDP";
             Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
@@ -63,7 +63,12 @@ namespace TabbedRdp
             _split.Panel1Collapsed = !_state.SidebarVisible;
 
             Load += (s, e) => _split.SplitterDistance = Math.Max(120, _state.SidebarWidth);
-            Shown += (s, e) => { HandleArguments(_startupArgs); _address.Focus(); };
+            Shown += (s, e) =>
+            {
+                _address.Focus();
+                ShowLaunchErrors(_startup.Errors);
+                OpenRequest(_startup.Request);
+            };
             UpdateUi();
         }
 
@@ -172,6 +177,7 @@ namespace TabbedRdp
         {
             if (_exiting) return;
             var session = new RdpSession(info.Clone());
+            SavedCredentials.Apply(session.Info);
             var page = new TabPage(session.Info.DisplayName)
             {
                 Tag = session,
@@ -279,9 +285,15 @@ namespace TabbedRdp
                 {
                     try
                     {
-                        var info = RdpFile.Load(file);
-                        if (saveToList) _state.Connections.Add(info);
-                        else OpenSession(info);
+                        if (saveToList)
+                        {
+                            _state.Connections.Add(RdpFile.Load(file));
+                            continue;
+                        }
+                        var launch = LaunchParser.Parse(new[] { file });
+                        if (launch.DelegateReason != null) LaunchParser.RunMstsc(new[] { file });
+                        else OpenRequest(launch.Request);
+                        ShowLaunchErrors(launch.Errors);
                     }
                     catch (Exception ex)
                     {
@@ -296,31 +308,35 @@ namespace TabbedRdp
             }
         }
 
-        private void HandleArguments(IEnumerable<string> args)
+        /// <summary>Opens what a launch (command line, .rdp file, or another instance) asked for.</summary>
+        public void OpenRequest(LaunchRequest request)
         {
-            foreach (var raw in args)
+            foreach (var info in request.Resolve())
             {
-                string arg = raw.Trim();
-                if (arg.Length == 0) continue;
-                try
+                var toOpen = info;
+                // "/v:host" alone: use the saved connection for that host if there is one.
+                if (string.IsNullOrWhiteSpace(info.UserName) && string.IsNullOrEmpty(info.Password) &&
+                    _state.FindByAddress(info.Host, info.Port) is ConnectionInfo saved)
                 {
-                    if (arg.EndsWith(".rdp", StringComparison.OrdinalIgnoreCase) && File.Exists(arg))
-                    {
-                        OpenSession(RdpFile.Load(arg));
-                    }
-                    else
-                    {
-                        if (arg.StartsWith("/v:", StringComparison.OrdinalIgnoreCase)) arg = arg.Substring(3);
-                        if (arg.StartsWith("/") || arg.StartsWith("-")) continue; // ignore other mstsc switches
-                        _address.Text = arg;
-                        QuickConnect();
-                    }
+                    toOpen = saved.Clone();
+                    toOpen.FullScreen |= info.FullScreen;
+                    toOpen.AdminSession |= info.AdminSession;
                 }
-                catch (Exception ex)
-                {
-                    MessageBox.Show(this, $"{arg}: {ex.Message}", Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                }
+                Log.Write($"  open tab: {toOpen.Address} user={toOpen.FullUserName} password={(string.IsNullOrEmpty(toOpen.Password) ? "no" : "yes")} " +
+                          $"size={(toOpen.Width > 0 ? $"{toOpen.Width}x{toOpen.Height}" : "fit")} full={toOpen.FullScreen} admin={toOpen.AdminSession}");
+                OpenSession(toOpen);
             }
+
+            // Bring the window forward when a connector adds a tab.
+            if (WindowState == FormWindowState.Minimized) WindowState = _state.WindowMaximized ? FormWindowState.Maximized : FormWindowState.Normal;
+            Activate();
+            BringToFront();
+        }
+
+        private void ShowLaunchErrors(List<string> errors)
+        {
+            if (errors.Count > 0)
+                MessageBox.Show(this, string.Join("\n", errors), "Tabbed RDP", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
 
         // ---- saved connections -----------------------------------------------------------

@@ -21,6 +21,33 @@ Single `.exe`, targets .NET Framework 4.8 (already on every Windows 10/11 / Serv
 - Passwords are stored encrypted with **DPAPI** (only your Windows account on that machine can decrypt them), and only if you tick "Remember password".
 - Opens `.rdp` files and accepts `mstsc`-style arguments: `TabbedRDP.exe /v:server01:3390 other.rdp`.
 
+## Using it as an mstsc.exe replacement (web / agent connectors)
+
+Point your connector at `TabbedRDP.exe` instead of `mstsc.exe` — it accepts the same arguments:
+
+```
+TabbedRDP.exe connection.rdp
+TabbedRDP.exe /v:server01:3390 /w:1366 /h:768 /admin
+TabbedRDP.exe connection.rdp /f
+```
+
+- **One window:** if Tabbed RDP is already running, a new launch opens as a **new tab** in it (add `/newwindow` to force a separate window).
+- **.rdp settings honoured:** full address / server port, username / domain, `password 51:b:` (the DPAPI-encrypted password
+  mstsc and most tools write), screen mode (window / full screen), desktopwidth / desktopheight, dynamic resolution,
+  smart sizing, session bpp, administrative session, audiomode, audiocapturemode, redirectclipboard / printers /
+  smartcards / comports, drivestoredirect, keyboardhook, enablecredsspsupport, authentication level,
+  prompt for credentials, alternate shell, shell working directory, connection bar, autoreconnection,
+  the "disable wallpaper / themes / …" experience flags, loadbalanceinfo and RD Gateway (gatewayhostname, gatewayusagemethod,
+  gatewaycredentialssource, promptcredentialonce).
+- **Switches:** `/v: /w: /h: /f /admin /prompt /g:` (plus non-mstsc `/u:` and `/p:` for connectors that can't write files).
+  Command-line switches override the file, like mstsc.
+- **Saved credentials:** if no password is supplied, `TERMSRV/<host>` entries from Windows Credential Manager are used
+  (`cmdkey /generic:TERMSRV/host /user:... /pass:...`). Otherwise the standard Windows credential prompt appears.
+- **Handed to the real mstsc.exe** (the embedded control can't do these): `/shadow` (+ `/control /noConsentPrompt`),
+  `/multimon`, `/span`, `use multimon:i:1`, `span monitors:i:1`, `/restrictedAdmin`, `/remoteGuard`, RemoteApp files.
+- **Troubleshooting:** every launch is logged (passwords masked) to `%APPDATA%\TabbedRDP\launch.log` —
+  it shows the exact arguments and .rdp values received and what was opened.
+
 ## Keyboard shortcuts
 
 | Keys | Action |

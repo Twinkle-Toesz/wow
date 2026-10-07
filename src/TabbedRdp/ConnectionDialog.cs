@@ -40,6 +40,10 @@ namespace TabbedRdp
         private readonly CheckBox _drives = new CheckBox { Text = "Local drives", AutoSize = true };
         private readonly CheckBox _printers = new CheckBox { Text = "Printers", AutoSize = true };
         private readonly CheckBox _smartCards = new CheckBox { Text = "Smart cards", AutoSize = true };
+        private readonly CheckBox _ports = new CheckBox { Text = "Serial ports (COM)", AutoSize = true };
+        private readonly CheckBox _microphone = new CheckBox { Text = "Microphone", AutoSize = true };
+        private readonly CheckBox _fullScreen = new CheckBox { Text = "Start in full screen", AutoSize = true };
+        private readonly TextBox _gateway = new TextBox();
         private readonly ComboBox _audio = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
         private readonly TextBox _notes = new TextBox { Multiline = true, ScrollBars = ScrollBars.Vertical, Height = 70 };
         private readonly CheckBox _saveToList = new CheckBox { Text = "Save to connections list", AutoSize = true };
@@ -58,7 +62,7 @@ namespace TabbedRdp
             StartPosition = FormStartPosition.CenterParent;
             AutoScaleMode = AutoScaleMode.Font;
             Font = SystemFonts.MessageBoxFont;
-            ClientSize = new Size(500, 470);
+            ClientSize = new Size(500, 520);
 
             _group.Items.AddRange(groups.Where(g => !string.IsNullOrWhiteSpace(g)).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(g => g).ToArray<object>());
             _resolution.Items.AddRange(Resolutions.Select(r => (object)r.Label).ToArray());
@@ -115,10 +119,13 @@ namespace TabbedRdp
             var table = NewTable();
             AddRow(table, "Resolution:", _resolution);
             AddRow(table, "Colors:", _colors);
+            AddRow(table, "", _fullScreen);
             AddRow(table, "", _smartSizing);
             AddRow(table, "", Hint("\"Fit to window\" resizes the remote desktop when you resize the tab\n(Windows 8.1 / Server 2012 R2 or newer)."));
             AddRow(table, "", _admin);
             AddRow(table, "", _nla);
+            AddRow(table, "RD Gateway:", _gateway);
+            AddRow(table, "", Hint("Leave empty to connect directly."));
             return new TabPage("Display") { Controls = { table }, Padding = new Padding(8) };
         }
 
@@ -129,6 +136,8 @@ namespace TabbedRdp
             AddRow(table, "", _drives);
             AddRow(table, "", _printers);
             AddRow(table, "", _smartCards);
+            AddRow(table, "", _ports);
+            AddRow(table, "", _microphone);
             AddRow(table, "Remote audio:", _audio);
             return new TabPage("Local resources") { Controls = { table }, Padding = new Padding(8) };
         }
@@ -181,6 +190,10 @@ namespace TabbedRdp
             _drives.Checked = info.RedirectDrives;
             _printers.Checked = info.RedirectPrinters;
             _smartCards.Checked = info.RedirectSmartCards;
+            _ports.Checked = info.RedirectPorts;
+            _microphone.Checked = info.AudioCapture;
+            _fullScreen.Checked = info.FullScreen;
+            _gateway.Text = info.GatewayUsage != 0 && info.GatewayUsage != 4 ? info.GatewayHost ?? "" : "";
             _audio.SelectedIndex = (int)info.Audio;
             _notes.Text = info.Notes ?? "";
         }
@@ -219,6 +232,12 @@ namespace TabbedRdp
             info.RedirectDrives = _drives.Checked;
             info.RedirectPrinters = _printers.Checked;
             info.RedirectSmartCards = _smartCards.Checked;
+            info.RedirectPorts = _ports.Checked;
+            info.AudioCapture = _microphone.Checked;
+            info.FullScreen = _fullScreen.Checked;
+            info.GatewayHost = _gateway.Text.Trim();
+            if (info.GatewayHost.Length == 0) info.GatewayUsage = 0;
+            else if (info.GatewayUsage == 0 || info.GatewayUsage == 4) info.GatewayUsage = 1;
             info.Audio = (AudioMode)Math.Max(0, _audio.SelectedIndex);
             info.Notes = _notes.Text;
 

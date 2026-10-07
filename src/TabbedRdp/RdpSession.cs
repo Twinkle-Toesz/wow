@@ -102,6 +102,7 @@ namespace TabbedRdp
                 _rdp.Connected += (s, e) => SetState(SessionState.Connecting, $"Connected to {Info.Address}, logging on…");
                 _rdp.LoginComplete += OnLoginComplete;
                 _rdp.Disconnected += OnDisconnected;
+                _rdp.LeftFullScreen += (s, e) => { _resizeTimer.Stop(); _resizeTimer.Start(); };
                 _rdp.FatalError += (s, code) => SetState(SessionState.Disconnected, $"Fatal error in the Remote Desktop control (code {code}).");
 
                 ApplySettings();
@@ -136,9 +137,9 @@ namespace TabbedRdp
 
             Try(() => adv.RDPPort = Info.Port <= 0 ? 3389 : Info.Port);
             Try(() => adv.EnableCredSspSupport = Info.UseNla);
-            Try(() => adv.AuthenticationLevel = 2u); // warn on certificate problems, like mstsc
+            Try(() => adv.AuthenticationLevel = (uint)Math.Max(0, Info.AuthenticationLevel));
             Try(() => adv.SmartSizing = Info.SmartSizing);
-            Try(() => adv.EnableAutoReconnect = true);
+            Try(() => adv.EnableAutoReconnect = Info.AutoReconnect);
             Try(() => adv.MaxReconnectAttempts = 20);
             Try(() => adv.BitmapPersistence = 1);
             Try(() => adv.allowBackgroundInput = 1);
@@ -147,19 +148,46 @@ namespace TabbedRdp
             Try(() => adv.RedirectDrives = Info.RedirectDrives);
             Try(() => adv.RedirectPrinters = Info.RedirectPrinters);
             Try(() => adv.RedirectSmartCards = Info.RedirectSmartCards);
+            Try(() => adv.RedirectPorts = Info.RedirectPorts);
+            Try(() => adv.AudioCaptureRedirectionMode = Info.AudioCapture);
             Try(() => adv.ConnectToAdministerServer = Info.AdminSession);
             Try(() => adv.EnableWindowsKey = 1);
-            Try(() => adv.PerformanceFlags = 0x80 | 0x100); // font smoothing + desktop composition
+            Try(() => adv.PerformanceFlags = Info.PerformanceFlags);
+            Try(() => adv.DisplayConnectionBar = Info.DisplayConnectionBar);
+            Try(() => adv.PinConnectionBar = Info.PinConnectionBar);
+            if (!string.IsNullOrWhiteSpace(Info.LoadBalanceInfo)) Try(() => adv.LoadBalanceInfo = Info.LoadBalanceInfo);
 
             Try(() => ocx.SecuredSettings2.AudioRedirectionMode = (int)Info.Audio);
-            Try(() => ocx.SecuredSettings3.KeyboardHookMode = 2); // Win-key combos go remote in full screen
+            Try(() => ocx.SecuredSettings3.KeyboardHookMode = Info.KeyboardHook);
+            if (!string.IsNullOrWhiteSpace(Info.AlternateShell)) Try(() => ocx.SecuredSettings.StartProgram = Info.AlternateShell);
+            if (!string.IsNullOrWhiteSpace(Info.WorkingDirectory)) Try(() => ocx.SecuredSettings.WorkDir = Info.WorkingDirectory);
 
-            _rdp.SetPassword(Info.Password);
+            // RD Gateway (.rdp gatewayusagemethod uses the same numbers as the control).
+            if (!string.IsNullOrWhiteSpace(Info.GatewayHost) && Info.GatewayUsage != 0 && Info.GatewayUsage != 4)
+            {
+                Try(() => ocx.TransportSettings.GatewayHostname = Info.GatewayHost);
+                Try(() => ocx.TransportSettings.GatewayUsageMethod = (uint)Info.GatewayUsage);
+                Try(() => ocx.TransportSettings.GatewayProfileUsageMethod = 1u);
+                Try(() => ocx.TransportSettings.GatewayCredsSource = (uint)Info.GatewayCredentialsSource);
+                Try(() => ocx.TransportSettings2.GatewayCredSharing = Info.GatewayUseSameCredentials ? 1u : 0u);
+            }
+
+            if (Info.FullScreen) Try(() => ocx.FullScreen = true);
+
+            if (!string.IsNullOrEmpty(Info.Password) && !Info.PromptForCredentials)
+                _rdp.SetPassword(Info.Password);
+            else
+                _rdp.EnableCredentialPrompt(FindForm()?.Handle ?? IntPtr.Zero);
         }
 
         private Size DesiredDesktopSize()
         {
             if (Info.Width > 0 && Info.Height > 0) return new Size(Info.Width, Info.Height);
+            if (Info.FullScreen)
+            {
+                var bounds = Screen.FromControl(this).Bounds;
+                return new Size(bounds.Width & ~1, bounds.Height);
+            }
             var client = ClientSize;
             if (client.Width < 200 || client.Height < 200)
             {

@@ -38,6 +38,39 @@ namespace TabbedRdp
         [DataMember] public AudioMode Audio { get; set; }
         [DataMember] public string Notes { get; set; }
 
+        // ---- the rest of the standard .rdp settings ----
+        [DataMember] public bool FullScreen { get; set; }
+        [DataMember] public bool RedirectPorts { get; set; }
+        [DataMember] public bool AudioCapture { get; set; }
+        [DataMember] public int AuthenticationLevel { get; set; }
+        [DataMember] public bool PromptForCredentials { get; set; }
+        [DataMember] public bool AutoReconnect { get; set; }
+        [DataMember] public bool DisplayConnectionBar { get; set; }
+        [DataMember] public bool PinConnectionBar { get; set; }
+        /// <summary>0 = this computer, 1 = remote computer, 2 = remote only in full screen.</summary>
+        [DataMember] public int KeyboardHook { get; set; }
+        [DataMember] public string AlternateShell { get; set; }
+        [DataMember] public string WorkingDirectory { get; set; }
+        [DataMember] public string LoadBalanceInfo { get; set; }
+        [DataMember] public string GatewayHost { get; set; }
+        /// <summary>.rdp gatewayusagemethod: 0/4 = don't use, 1 = always, 2 = bypass for local.</summary>
+        [DataMember] public int GatewayUsage { get; set; }
+        [DataMember] public int GatewayCredentialsSource { get; set; }
+        [DataMember] public bool GatewayUseSameCredentials { get; set; }
+        [DataMember] public bool DisableWallpaper { get; set; }
+        [DataMember] public bool DisableFullWindowDrag { get; set; }
+        [DataMember] public bool DisableMenuAnimations { get; set; }
+        [DataMember] public bool DisableThemes { get; set; }
+        [DataMember] public bool DisableCursorSettings { get; set; }
+        [DataMember] public bool FontSmoothing { get; set; }
+        [DataMember] public bool DesktopComposition { get; set; }
+
+        /// <summary>RDP "PerformanceFlags" bitmask built from the visual-experience settings.</summary>
+        public int PerformanceFlags =>
+            (DisableWallpaper ? 0x1 : 0) | (DisableFullWindowDrag ? 0x2 : 0) | (DisableMenuAnimations ? 0x4 : 0) |
+            (DisableThemes ? 0x8 : 0) | (DisableCursorSettings ? 0x20 | 0x40 : 0) |
+            (FontSmoothing ? 0x80 : 0) | (DesktopComposition ? 0x100 : 0);
+
         /// <summary>Plain-text password, held in memory only.</summary>
         [IgnoreDataMember] public string Password { get; set; }
 
@@ -54,6 +87,13 @@ namespace TabbedRdp
             UseNla = true;
             RedirectClipboard = true;
             Audio = AudioMode.PlayLocally;
+            AuthenticationLevel = 2;
+            AutoReconnect = true;
+            DisplayConnectionBar = true;
+            PinConnectionBar = true;
+            KeyboardHook = 2;
+            FontSmoothing = true;
+            DesktopComposition = true;
         }
 
         public string DisplayName => string.IsNullOrWhiteSpace(Name) ? Address : Name.Trim();

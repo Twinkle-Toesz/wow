@@ -24,6 +24,7 @@ namespace TabbedRdp
         [DispId(2)] void OnConnected();
         [DispId(3)] void OnLoginComplete();
         [DispId(4)] void OnDisconnected(int discReason);
+        [DispId(6)] void OnLeaveFullScreenMode();
         [DispId(10)] void OnFatalError(int errorCode);
     }
 
@@ -32,6 +33,36 @@ namespace TabbedRdp
     internal interface IMsTscNonScriptable
     {
         string ClearTextPassword { [param: MarshalAs(UnmanagedType.BStr)] set; }
+    }
+
+    /// <summary>
+    /// IMsRdpClientNonScriptable3 with its inherited slots spelled out (vtable order matters, names don't).
+    /// Used for PromptForCredentials and the parent window of that prompt.
+    /// </summary>
+    [ComImport, Guid("B3378D90-0728-45C7-8ED7-B6159FB92219"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    internal interface IMsRdpClientNonScriptable3
+    {
+        // IMsTscNonScriptable
+        void put_ClearTextPassword([MarshalAs(UnmanagedType.BStr)] string value);
+        void put_PortablePassword([MarshalAs(UnmanagedType.BStr)] string value);
+        [return: MarshalAs(UnmanagedType.BStr)] string get_PortablePassword();
+        void put_PortableSalt([MarshalAs(UnmanagedType.BStr)] string value);
+        [return: MarshalAs(UnmanagedType.BStr)] string get_PortableSalt();
+        void put_BinaryPassword([MarshalAs(UnmanagedType.BStr)] string value);
+        [return: MarshalAs(UnmanagedType.BStr)] string get_BinaryPassword();
+        void put_BinarySalt([MarshalAs(UnmanagedType.BStr)] string value);
+        [return: MarshalAs(UnmanagedType.BStr)] string get_BinarySalt();
+        void ResetPassword();
+        // IMsRdpClientNonScriptable
+        void NotifyRedirectDeviceChange(IntPtr wParam, IntPtr lParam);
+        void SendKeys(int numKeys, IntPtr pbArrayKeyUp, IntPtr plKeyData);
+        // IMsRdpClientNonScriptable2
+        void put_UIParentWindowHandle(IntPtr hwnd);
+        IntPtr get_UIParentWindowHandle();
+        // IMsRdpClientNonScriptable3
+        void put_ShowRedirectionWarningDialog([MarshalAs(UnmanagedType.VariantBool)] bool value);
+        [return: MarshalAs(UnmanagedType.VariantBool)] bool get_ShowRedirectionWarningDialog();
+        void put_PromptForCredentials([MarshalAs(UnmanagedType.VariantBool)] bool value);
     }
 
     [ComVisible(true), ClassInterface(ClassInterfaceType.None)]
@@ -44,6 +75,7 @@ namespace TabbedRdp
         public void OnConnected() => _host.RaiseConnected();
         public void OnLoginComplete() => _host.RaiseLoginComplete();
         public void OnDisconnected(int discReason) => _host.RaiseDisconnected(discReason);
+        public void OnLeaveFullScreenMode() => _host.RaiseLeftFullScreen();
         public void OnFatalError(int errorCode) => _host.RaiseFatalError(errorCode);
     }
 
@@ -62,6 +94,7 @@ namespace TabbedRdp
         public event EventHandler LoginComplete;
         public event EventHandler<int> Disconnected;
         public event EventHandler<int> FatalError;
+        public event EventHandler LeftFullScreen;
 
         public RdpClientHost() : base(ResolveClsid()) { }
 
@@ -129,6 +162,22 @@ namespace TabbedRdp
         internal void RaiseLoginComplete() => LoginComplete?.Invoke(this, EventArgs.Empty);
         internal void RaiseDisconnected(int reason) => Disconnected?.Invoke(this, reason);
         internal void RaiseFatalError(int code) => FatalError?.Invoke(this, code);
+        internal void RaiseLeftFullScreen() => LeftFullScreen?.Invoke(this, EventArgs.Empty);
+
+        /// <summary>
+        /// Lets the control show the standard Windows credential prompt (like mstsc) when no password
+        /// was supplied, instead of failing the logon.
+        /// </summary>
+        public void EnableCredentialPrompt(IntPtr parentWindow)
+        {
+            try
+            {
+                var ns = (IMsRdpClientNonScriptable3)GetOcx();
+                if (parentWindow != IntPtr.Zero) ns.put_UIParentWindowHandle(parentWindow);
+                ns.put_PromptForCredentials(true);
+            }
+            catch { /* older control: the server-side logon screen is used instead */ }
+        }
 
         // ---- CLSID discovery -------------------------------------------------------------
 
