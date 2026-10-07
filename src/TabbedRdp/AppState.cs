@@ -16,17 +16,32 @@ namespace TabbedRdp
         [DataMember] public List<ConnectionInfo> Connections { get; set; } = new List<ConnectionInfo>();
         [DataMember] public List<string> RecentAddresses { get; set; } = new List<string>();
         [DataMember] public string LastUserName { get; set; }
-        [DataMember] public bool SidebarVisible { get; set; } = true;
+        [DataMember] public bool ShowSidebar { get; set; }
         [DataMember] public int SidebarWidth { get; set; } = 240;
+        [DataMember] public ThemeMode Theme { get; set; }
+        /// <summary>Use the normal Windows title bar instead of tabs-in-title-bar.</summary>
+        [DataMember] public bool StandardTitleBar { get; set; }
+        /// <summary>Tapping Alt shows the menu even while a remote session has the keyboard.</summary>
+        [DataMember] public bool AltMenuInSessions { get; set; } = true;
+        /// <summary>Settings every new connection starts from (Options → Save as default).</summary>
+        [DataMember] public ConnectionInfo Defaults { get; set; } = new ConnectionInfo();
         [DataMember] public int WindowX { get; set; }
         [DataMember] public int WindowY { get; set; }
         [DataMember] public int WindowWidth { get; set; }
         [DataMember] public int WindowHeight { get; set; }
         [DataMember] public bool WindowMaximized { get; set; }
 
+        [OnDeserializing]
+        private void OnDeserializing(StreamingContext _)
+        {
+            AltMenuInSessions = true;
+            SidebarWidth = 240;
+        }
+
         [OnDeserialized]
         private void OnDeserialized(StreamingContext _)
         {
+            Defaults = Defaults ?? new ConnectionInfo();
             Connections = Connections ?? new List<ConnectionInfo>();
             RecentAddresses = RecentAddresses ?? new List<string>();
             if (SidebarWidth < 120) SidebarWidth = 240;
@@ -53,7 +68,7 @@ namespace TabbedRdp
                 // Keep a copy of the unreadable file rather than silently overwriting it.
                 try { File.Copy(FilePath, FilePath + ".bad", true); } catch { }
             }
-            return new AppState { SidebarVisible = true, SidebarWidth = 240 };
+            return new AppState();
         }
 
         public void Save()

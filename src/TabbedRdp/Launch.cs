@@ -54,7 +54,8 @@ namespace TabbedRdp
             public List<string> Errors = new List<string>();
         }
 
-        public static Result Parse(string[] args)
+        /// <param name="defaults">The user's default settings, used for anything the launch doesn't specify.</param>
+        public static Result Parse(string[] args, ConnectionInfo defaults = null)
         {
             var result = new Result();
             if (args == null || args.Length == 0) return result;
@@ -107,7 +108,7 @@ namespace TabbedRdp
                         result.DelegateReason = result.DelegateReason ?? RdpFile.NeedsMstsc(values);
                         // Connectors usually write throw-away files to %TEMP%: name those tabs after the host instead.
                         bool temp = Path.GetFullPath(arg).StartsWith(Path.GetTempPath(), StringComparison.OrdinalIgnoreCase);
-                        current = RdpFile.FromValues(values, temp ? null : Path.GetFileNameWithoutExtension(arg));
+                        current = RdpFile.FromValues(values, temp ? null : Path.GetFileNameWithoutExtension(arg), defaults);
                     }
                     catch (Exception ex)
                     {
@@ -125,7 +126,7 @@ namespace TabbedRdp
             }
 
             if (current == null && pendingHost == null) return result;
-            if (current == null) current = new ConnectionInfo();
+            if (current == null) current = defaults?.NewFromTemplate() ?? new ConnectionInfo();
 
             // Command-line switches override the .rdp file, exactly like mstsc.
             if (pendingHost != null && ConnectionInfo.TryParseAddress(pendingHost, out var host, out var port))

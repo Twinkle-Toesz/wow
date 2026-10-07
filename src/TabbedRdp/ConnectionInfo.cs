@@ -110,6 +110,24 @@ namespace TabbedRdp
             return copy;
         }
 
+        /// <summary>A new connection that starts from these (default) settings, without any identity.</summary>
+        public ConnectionInfo NewFromTemplate()
+        {
+            var c = Clone(newId: true);
+            c.Host = null;
+            c.Port = 3389;
+            c.Name = null;
+            c.Group = null;
+            c.UserName = null;
+            c.Domain = null;
+            c.Password = null;
+            c.SavePassword = false;
+            c.ProtectedPassword = null;
+            c.Notes = null;
+            c.LoadBalanceInfo = null;
+            return c;
+        }
+
         /// <summary>Parses "host", "host:port", "[ipv6]:port".</summary>
         public static bool TryParseAddress(string text, out string host, out int port)
         {

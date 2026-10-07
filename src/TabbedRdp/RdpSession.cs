@@ -25,8 +25,9 @@ namespace TabbedRdp
         private readonly Timer _closeTimeout;
         private bool _closing;
         private bool _loggedIn;
+        private bool _reconnectAfterDisconnect;
 
-        public ConnectionInfo Info { get; }
+        public ConnectionInfo Info { get; private set; }
         public SessionState State { get; private set; } = SessionState.Idle;
         public string StatusText { get; private set; } = "";
 
@@ -48,9 +49,9 @@ namespace TabbedRdp
                 ForeColor = Color.Gainsboro,
                 Font = new Font(SystemFonts.MessageBoxFont.FontFamily, 11f),
             };
-            _reconnectButton = new Button { Text = "Reconnect", Width = 110, Height = 32, FlatStyle = FlatStyle.System };
+            _reconnectButton = new Button { Text = "Reconnect", Width = 110, Height = 32, Tag = "primary" };
             _reconnectButton.Click += (s, e) => Connect();
-            _closeButton = new Button { Text = "Close tab", Width = 110, Height = 32, FlatStyle = FlatStyle.System };
+            _closeButton = new Button { Text = "Close tab", Width = 110, Height = 32 };
             _closeButton.Click += (s, e) => RequestClose();
 
             var buttons = new FlowLayoutPanel
@@ -59,6 +60,8 @@ namespace TabbedRdp
                 Height = 50,
                 FlowDirection = FlowDirection.LeftToRight,
                 Padding = new Padding(0, 10, 0, 0),
+                Tag = "keepBack",
+                BackColor = Color.Transparent,
             };
             buttons.Controls.Add(_reconnectButton);
             buttons.Controls.Add(_closeButton);
@@ -68,10 +71,12 @@ namespace TabbedRdp
                 buttons.Padding = new Padding(Math.Max(0, (buttons.Width - total) / 2), 10, 0, 0);
             };
 
-            _overlay = new Panel { Dock = DockStyle.Fill, BackColor = BackColor, Padding = new Padding(20, 80, 20, 0) };
+            _overlay = new Panel { Dock = DockStyle.Fill, Padding = new Padding(20, 80, 20, 0) };
             _overlay.Controls.Add(buttons);
             _overlay.Controls.Add(_statusLabel);
             Controls.Add(_overlay);
+            ApplyTheme();
+            TabbedRdp.Theme.Changed += OnThemeChanged;
 
             _resizeTimer = new Timer { Interval = 600 };
             _resizeTimer.Tick += (s, e) => { _resizeTimer.Stop(); ApplyWindowSize(); };
@@ -81,6 +86,44 @@ namespace TabbedRdp
         }
 
         public bool IsActive => State == SessionState.Connecting || State == SessionState.Connected;
+
+        public bool IsFullScreen
+        {
+            get { try { return _rdp != null && (bool)_rdp.Ocx.FullScreen; } catch { return false; } }
+        }
+
+        private void OnThemeChanged(object sender, EventArgs e) => ApplyTheme();
+
+        private void ApplyTheme()
+        {
+            var p = TabbedRdp.Theme.Current;
+            BackColor = p.TabActive;
+            _overlay.BackColor = p.TabActive;
+            _statusLabel.ForeColor = p.Text;
+            foreach (Control c in _overlay.Controls) TabbedRdp.Theme.Apply(c);
+        }
+
+        /// <summary>Reconnects, disconnecting cleanly first if the session is still up.</summary>
+        public void Reconnect()
+        {
+            if (_rdp != null && _rdp.IsConnected)
+            {
+                _reconnectAfterDisconnect = true;
+                SetState(SessionState.Connecting, $"Reconnecting to {Info.Address}…");
+                Try(() => _rdp.Ocx.Disconnect());
+            }
+            else
+            {
+                Connect();
+            }
+        }
+
+        /// <summary>Applies new settings (Options dialog) and reconnects.</summary>
+        public void Reconfigure(ConnectionInfo info)
+        {
+            Info = info;
+            Reconnect();
+        }
 
         public RdpClientHost Client => _rdp;
 
@@ -210,6 +253,12 @@ namespace TabbedRdp
         private void OnDisconnected(object sender, int reason)
         {
             _resizeTimer.Stop();
+            if (_reconnectAfterDisconnect)
+            {
+                _reconnectAfterDisconnect = false;
+                BeginInvoke((Action)Connect);
+                return;
+            }
             if (_closing)
             {
                 _closeTimeout.Stop();
@@ -318,6 +367,7 @@ namespace TabbedRdp
         {
             if (disposing)
             {
+                TabbedRdp.Theme.Changed -= OnThemeChanged;
                 _resizeTimer.Dispose();
                 _closeTimeout.Dispose();
                 DestroyClient();

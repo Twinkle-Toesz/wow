@@ -24,11 +24,14 @@ namespace TabbedRdp
             return values;
         }
 
-        public static ConnectionInfo Load(string path) => FromValues(ReadValues(path), Path.GetFileNameWithoutExtension(path));
+        public static ConnectionInfo Load(string path, ConnectionInfo defaults = null) =>
+            FromValues(ReadValues(path), Path.GetFileNameWithoutExtension(path), defaults);
 
-        public static ConnectionInfo FromValues(Dictionary<string, string> v, string name)
+        /// <param name="defaults">Settings for everything the file doesn't specify (the user's defaults).</param>
+        public static ConnectionInfo FromValues(Dictionary<string, string> v, string name, ConnectionInfo defaults = null)
         {
-            var info = new ConnectionInfo { Name = name };
+            var info = defaults?.NewFromTemplate() ?? new ConnectionInfo();
+            info.Name = name;
 
             // --- target ---
             string address = Str(v, "full address") ?? Str(v, "alternate full address");
@@ -50,19 +53,28 @@ namespace TabbedRdp
             if (Int(v, "enablecredsspsupport") is int nla) info.UseNla = nla != 0;
             if (Int(v, "authentication level") is int auth) info.AuthenticationLevel = auth;
             if (Int(v, "administrative session") is int admin) info.AdminSession = admin != 0;
-            info.LoadBalanceInfo = Str(v, "loadbalanceinfo");
+            info.LoadBalanceInfo = Str(v, "loadbalanceinfo") ?? info.LoadBalanceInfo;
 
             // --- display ---
             // screen mode id: 1 = window, 2 = full screen
-            info.FullScreen = Int(v, "screen mode id") == 2;
-            bool dynamic = (Int(v, "dynamic resolution") ?? 1) != 0;
-            info.SmartSizing = (Int(v, "smart sizing") ?? 0) != 0;
+            if (Int(v, "screen mode id") is int mode) info.FullScreen = mode == 2;
+            if (Int(v, "smart sizing") is int smart) info.SmartSizing = smart != 0;
+            int? dynamic = Int(v, "dynamic resolution");
             int w = Int(v, "desktopwidth") ?? 0, h = Int(v, "desktopheight") ?? 0;
-            // Dynamic resolution = follow the tab size; otherwise keep the fixed size from the file.
-            if (w > 0 && h > 0 && (!dynamic || info.SmartSizing) && !info.FullScreen)
+            if (info.FullScreen)
             {
-                info.Width = w;
-                info.Height = h;
+                info.Width = info.Height = 0;
+            }
+            else if (w > 0 && h > 0)
+            {
+                // Dynamic resolution (mstsc's default) = follow the tab size; otherwise keep the fixed size.
+                bool fixedSize = dynamic == 0 || info.SmartSizing;
+                info.Width = fixedSize ? w : 0;
+                info.Height = fixedSize ? h : 0;
+            }
+            else if (dynamic == 1)
+            {
+                info.Width = info.Height = 0;
             }
             if (Int(v, "session bpp") is int bpp) info.ColorDepth = bpp;
             if (Int(v, "displayconnectionbar") is int bar) info.DisplayConnectionBar = bar != 0;
@@ -80,8 +92,8 @@ namespace TabbedRdp
             else if (Int(v, "redirectdrives") is int rd) info.RedirectDrives = rd != 0;
 
             // --- program / experience ---
-            info.AlternateShell = Str(v, "alternate shell");
-            info.WorkingDirectory = Str(v, "shell working directory");
+            info.AlternateShell = Str(v, "alternate shell") ?? info.AlternateShell;
+            info.WorkingDirectory = Str(v, "shell working directory") ?? info.WorkingDirectory;
             if (Int(v, "autoreconnection enabled") is int reconnect) info.AutoReconnect = reconnect != 0;
             if (Int(v, "disable wallpaper") is int wp) info.DisableWallpaper = wp != 0;
             if (Int(v, "disable full window drag") is int drag) info.DisableFullWindowDrag = drag != 0;
@@ -92,7 +104,7 @@ namespace TabbedRdp
             if (Int(v, "allow desktop composition") is int comp) info.DesktopComposition = comp != 0;
 
             // --- RD Gateway ---
-            info.GatewayHost = Str(v, "gatewayhostname");
+            info.GatewayHost = Str(v, "gatewayhostname") ?? info.GatewayHost;
             if (Int(v, "gatewayusagemethod") is int gwUse) info.GatewayUsage = gwUse;
             if (Int(v, "gatewaycredentialssource") is int gwCreds) info.GatewayCredentialsSource = gwCreds;
             if (Int(v, "promptcredentialonce") is int once) info.GatewayUseSameCredentials = once != 0;

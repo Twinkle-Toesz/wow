@@ -13,7 +13,8 @@ namespace TabbedRdp
         private static void Main(string[] args)
         {
             Log.Write("start: " + LaunchParser.Mask(Environment.CommandLine));
-            var launch = LaunchParser.Parse(args);
+            var state = AppState.Load();
+            var launch = LaunchParser.Parse(args, state.Defaults);
 
             // Things only the real client can do (shadowing, all monitors, RemoteApp…) go straight to mstsc.exe.
             if (launch.DelegateReason != null)
@@ -40,7 +41,8 @@ namespace TabbedRdp
                 Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
                 Application.ThreadException += OnThreadException;
 
-                var form = new MainForm(launch);
+                Theme.SetMode(state.Theme);
+                var form = new MainForm(launch, state);
                 if (firstInstance) form.Shown += (s, e) => Listen(pipeName, form);
                 Application.Run(form);
                 GC.KeepAlive(mutex);

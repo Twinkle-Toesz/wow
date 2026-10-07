@@ -7,19 +7,24 @@ Single `.exe`, targets .NET Framework 4.8 (already on every Windows 10/11 / Serv
 
 ## Features
 
-- **Tabs** — every connection opens in its own tab, with a status dot (orange = connecting, green = connected, red = disconnected).
-  Close with the ×, middle-click, or Ctrl+W. Right-click a tab for Reconnect / Disconnect / Full screen / Smart sizing / Duplicate / Save.
-- **Quick connect bar** like mstsc's "Computer:" box — type `server`, `server:3390` or `[fe80::1]:3389` and hit Enter.
-  Saved connections are matched automatically; otherwise you get a credentials prompt.
-- **Saved connections sidebar** grouped by client/group, with search (Ctrl+F), double-click to connect,
-  "Connect all" on a group, duplicate, import `.rdp` files.
-- **Auto-resize** — "Fit to window" resizes the remote desktop when you resize the window/tab (Win 8.1 / 2012 R2+ hosts),
-  or use smart sizing / a fixed resolution.
-- **Full screen** (F11) with the normal RDP connection bar; Windows-key combos go to the remote machine while full screen.
-- mstsc options: `/admin` session, NLA/CredSSP, colour depth, clipboard / drive / printer / smart-card redirection, audio mode,
-  auto-reconnect.
-- Passwords are stored encrypted with **DPAPI** (only your Windows account on that machine can decrypt them), and only if you tick "Remember password".
-- Opens `.rdp` files and accepts `mstsc`-style arguments: `TabbedRDP.exe /v:server01:3390 other.rdp`.
+- **Tabs in the title bar** (like 1Remote / a browser): status dot per tab (green connected, orange connecting,
+  red disconnected), close with ×, middle-click or Ctrl+W, drag tabs to reorder, **+** opens a new connection.
+  Drag the empty strip to move the window; snapping and double-click-to-maximize work as usual.
+  (Prefer the normal Windows title bar? Alt → View → *Use the standard Windows title bar*.)
+- **Hidden menu — tap Alt** (also while a remote session has the keyboard): Connection (new, open .rdp, saved, recent,
+  reconnect, disconnect, full screen, duplicate, close), View (sidebar, theme, smart sizing, title bar), Options, Help.
+  The app icon at the top-left opens the same menu.
+- **Options** — every setting the RDP engine supports, in one dialog with pages:
+  *Connection* (computer, user, password), *Display* (fit-to-window / fixed size presets / full screen, smart sizing,
+  colour depth, connection bar), *Local resources* (audio playback, microphone, Windows key combinations, clipboard,
+  printers, drives, smart cards, COM ports), *Experience* (connection-speed presets, wallpaper, font smoothing,
+  composition, animations, themes, auto-reconnect), *Security & advanced* (NLA, server authentication, always prompt,
+  /admin, RD Gateway, start program).
+  *Options for this connection* → **Apply & reconnect** changes the open tab; **Save as default** makes the settings the
+  defaults for every new connection (the **+** dialog, `/v:` launches and anything an .rdp file doesn't specify).
+- **Dark / light theme** following the Windows app theme, or forced via Alt → View → Theme.
+- **Saved connections sidebar** (Ctrl+B) grouped by client, with search (Ctrl+F), "Connect all" on a group,
+  import of `.rdp` files. Passwords are stored DPAPI-encrypted, only when "Remember password" is ticked.
 
 ## Using it as an mstsc.exe replacement (web / agent connectors)
 
@@ -52,17 +57,17 @@ TabbedRDP.exe connection.rdp /f
 
 | Keys | Action |
 | --- | --- |
-| Ctrl+N | New connection (all options) |
-| Ctrl+L | Focus the computer box |
+| Alt (tap) | Show / hide the menu |
+| Ctrl+T / Ctrl+N | New connection |
 | Ctrl+O | Open `.rdp` file |
-| Ctrl+F | Search saved connections |
 | Ctrl+Tab / Ctrl+Shift+Tab | Next / previous tab |
 | Ctrl+W | Close tab (disconnects first) |
 | F5 | Reconnect |
-| F11 | Full screen |
+| F11 | Full screen (Ctrl+Alt+Break inside a session) |
+| Ctrl+B / Ctrl+F | Connections sidebar / search |
 
-While a remote session has keyboard focus, keystrokes go to the remote machine (like mstsc) — click the tab strip,
-toolbar or sidebar first to use the shortcuts. Ctrl+Alt+Break toggles full screen from inside a session.
+While a remote session has the keyboard, keystrokes go to the remote machine (like mstsc) — only the Alt tap is
+caught. Click the tab strip first to use the other shortcuts.
 
 ## Download / build
 
