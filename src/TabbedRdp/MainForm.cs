@@ -983,9 +983,53 @@ namespace TabbedRdp
             base.WndProc(ref m);
         }
 
+        /// <summary>
+        /// With tabs in the title bar the window has a frame on the left, right and bottom only.
+        /// WinForms assumes a normal caption when it turns a client size back into a window size
+        /// (e.g. when restoring from the taskbar), which made the window grow by a caption height
+        /// on every minimize / restore.
+        /// </summary>
+        protected override Size SizeFromClientSize(Size clientSize)
+        {
+            if (!_customChrome) return base.SizeFromClientSize(clientSize);
+            int fx = GetSystemMetrics(32 /* SM_CXSIZEFRAME */) + GetSystemMetrics(92 /* SM_CXPADDEDBORDER */);
+            int fy = GetSystemMetrics(33 /* SM_CYSIZEFRAME */) + GetSystemMetrics(92 /* SM_CXPADDEDBORDER */);
+            return new Size(clientSize.Width + 2 * fx, clientSize.Height + fy);
+        }
+
+        private FormWindowState _lastWindowState = FormWindowState.Normal;
+        private Rectangle _normalBounds;
+
+        /// <summary>Safety net: coming back to the normal state always uses the last normal size.</summary>
+        private void TrackNormalBounds()
+        {
+            var state = WindowState;
+            if (state == FormWindowState.Normal)
+            {
+                if (_lastWindowState != FormWindowState.Normal && !_normalBounds.IsEmpty && Size != _normalBounds.Size)
+                {
+                    var size = _normalBounds.Size;
+                    BeginInvoke((Action)(() => { if (WindowState == FormWindowState.Normal) Size = size; }));
+                }
+                else if (_lastWindowState == FormWindowState.Normal)
+                {
+                    _normalBounds = Bounds;
+                }
+            }
+            _lastWindowState = state;
+        }
+
+        protected override void OnMove(EventArgs e)
+        {
+            base.OnMove(e);
+            if (WindowState == FormWindowState.Normal && _lastWindowState == FormWindowState.Normal && !_normalBounds.IsEmpty)
+                _normalBounds.Location = Location;
+        }
+
         protected override void OnResize(EventArgs e)
         {
             base.OnResize(e);
+            if (IsHandleCreated) TrackNormalBounds();
             if (_strip == null) return;
             bool maximized = WindowState == FormWindowState.Maximized;
             _strip.WindowMaximized = maximized;
@@ -1061,7 +1105,7 @@ namespace TabbedRdp
                 return;
             }
 
-            var bounds = WindowState == FormWindowState.Normal ? Bounds : RestoreBounds;
+            var bounds = WindowState == FormWindowState.Normal ? Bounds : !_normalBounds.IsEmpty ? _normalBounds : RestoreBounds;
             _state.WindowX = bounds.X;
             _state.WindowY = bounds.Y;
             _state.WindowWidth = bounds.Width;
