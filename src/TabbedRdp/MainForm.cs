@@ -950,6 +950,16 @@ namespace TabbedRdp
 
         protected override void WndProc(ref Message m)
         {
+            const int WM_WINDOWPOSCHANGING = 0x46, WM_ENTERSIZEMOVE = 0x231;
+            if (m.Msg == WM_WINDOWPOSCHANGING && m.LParam != IntPtr.Zero)
+            {
+                // Let WinForms adjust first, then have the last word on the size.
+                base.WndProc(ref m);
+                EnforceSizeLock(ref m);
+                return;
+            }
+            if (m.Msg == WM_ENTERSIZEMOVE) _sizeLock = false; // the user is moving / resizing / snapping
+
             if (_customChrome)
             {
                 if (m.Msg == WM_NCCALCSIZE && m.WParam != IntPtr.Zero)
@@ -1000,23 +1010,88 @@ namespace TabbedRdp
         private FormWindowState _lastWindowState = FormWindowState.Normal;
         private Rectangle _normalBounds;
 
-        /// <summary>Safety net: coming back to the normal state always uses the last normal size.</summary>
+        // Size lock around minimize / restore. Something in WinForms re-applies a slightly larger size
+        // when the window comes back from the taskbar (it assumes a standard caption / menu height that
+        // this window doesn't have), so the window grew on every restore. While minimized and for a
+        // short moment after restoring, any size other than the last normal size is refused in
+        // WM_WINDOWPOSCHANGING, before it reaches the screen. Dragging or snapping cancels the lock.
+        private bool _sizeLock;
+        private int _sizeLockDeadline;   // 0 = until restored
+        private Size _sizeLockSize;
+
         private void TrackNormalBounds()
         {
             var state = WindowState;
-            if (state == FormWindowState.Normal)
+            if (state == FormWindowState.Minimized && _lastWindowState == FormWindowState.Normal)
             {
-                if (_lastWindowState != FormWindowState.Normal && !_normalBounds.IsEmpty && Size != _normalBounds.Size)
+                if (_normalBounds.IsEmpty) _normalBounds = RestoreBounds;
+                _sizeLock = true;
+                _sizeLockDeadline = 0;
+                _sizeLockSize = _normalBounds.Size;
+                Log.Write($"window: minimized, normal size {_sizeLockSize.Width}x{_sizeLockSize.Height}");
+            }
+            else if (state == FormWindowState.Normal && _lastWindowState == FormWindowState.Minimized && _sizeLock)
+            {
+                _sizeLockDeadline = Environment.TickCount + 2000;
+                if (Size != _sizeLockSize)
                 {
-                    var size = _normalBounds.Size;
-                    BeginInvoke((Action)(() => { if (WindowState == FormWindowState.Normal) Size = size; }));
-                }
-                else if (_lastWindowState == FormWindowState.Normal)
-                {
-                    _normalBounds = Bounds;
+                    Log.Write($"window: restored as {Width}x{Height}, putting back {_sizeLockSize.Width}x{_sizeLockSize.Height}");
+                    Size = _sizeLockSize;
                 }
             }
+            else if (state == FormWindowState.Maximized && _lastWindowState == FormWindowState.Minimized && _sizeLock)
+            {
+                _sizeLockDeadline = Environment.TickCount + 2000;
+            }
+            else if (state == FormWindowState.Normal && _lastWindowState == FormWindowState.Normal && !SizeLockActive)
+            {
+                _normalBounds = Bounds;
+            }
             _lastWindowState = state;
+        }
+
+        private bool SizeLockActive
+        {
+            get
+            {
+                if (!_sizeLock) return false;
+                if (_sizeLockDeadline != 0 && unchecked(Environment.TickCount - _sizeLockDeadline) > 0) _sizeLock = false;
+                return _sizeLock;
+            }
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct WINDOWPOS
+        {
+            public IntPtr Hwnd, HwndInsertAfter;
+            public int X, Y, Cx, Cy;
+            public uint Flags;
+        }
+
+        [DllImport("user32.dll")] private static extern bool IsIconic(IntPtr hwnd);
+
+        private void EnforceSizeLock(ref Message m)
+        {
+            const uint SWP_NOSIZE = 0x0001;
+            if (!SizeLockActive) return;
+            var wp = Marshal.PtrToStructure<WINDOWPOS>(m.LParam);
+            if ((wp.Flags & SWP_NOSIZE) != 0) return;
+            // Minimized (tiny) and maximized positions are Windows' business.
+            if (wp.Cx < 300 || wp.Cy < 200 || IsZoomed(Handle)) return;
+            if (wp.Cx == _sizeLockSize.Width && wp.Cy == _sizeLockSize.Height) return;
+
+            Log.Write($"window: refused size {wp.Cx}x{wp.Cy} (iconic={IsIconic(Handle)}), keeping {_sizeLockSize.Width}x{_sizeLockSize.Height}");
+            wp.Cx = _sizeLockSize.Width;
+            wp.Cy = _sizeLockSize.Height;
+            Marshal.StructureToPtr(wp, m.LParam, false);
+        }
+
+        protected override void OnShown(EventArgs e)
+        {
+            // Know the normal size from the start, not only after the first manual resize.
+            if (WindowState == FormWindowState.Normal) _normalBounds = Bounds;
+            _lastWindowState = WindowState;
+            base.OnShown(e);
         }
 
         protected override void OnMove(EventArgs e)
